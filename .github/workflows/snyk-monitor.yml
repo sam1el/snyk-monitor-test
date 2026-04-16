@@ -44,12 +44,26 @@ jobs:
         with:
           sarif_file: snyk.sarif
 
+      - name: Run Snyk Code test (report to Snyk)
+        id: snyk_code
+        continue-on-error: true
+        run: >
+          snyk code test
+          --org=${{ secrets.SNYK_ORG_ID }}
+          --report
+          --project-name=${{ github.event.repository.name }}
+          --severity-threshold=high
+          --target-reference=${{ github.ref_name }}
+          --remote-repo-url=${{ github.server_url }}/${{ github.repository }}
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
       - name: Run Snyk Monitor
-        if: steps.snyk_test.outcome == 'success'
+        if: always() && steps.snyk_test.outcome != 'cancelled'
         run: snyk monitor --org=${{ secrets.SNYK_ORG_ID }}
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
-      - name: Fail if Snyk Test reported vulnerabilities
-        if: steps.snyk_test.outcome == 'failure'
+      - name: Fail if Snyk OSS or Code test reported vulnerabilities
+        if: steps.snyk_test.outcome == 'failure' || steps.snyk_code.outcome == 'failure'
         run: exit 1
