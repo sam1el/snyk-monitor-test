@@ -46,15 +46,22 @@ jobs:
 
       - name: Run Snyk Code test (report to Snyk)
         id: snyk_code
-        continue-on-error: true
-        run: >
-          snyk code test
-          --org=${{ secrets.SNYK_ORG_ID }}
-          --report
-          --project-name=${{ github.event.repository.name }}
-          --severity-threshold=high
-          --target-reference=${{ github.ref_name }}
-          --remote-repo-url=${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set +e
+          snyk code test \
+            --org=${{ secrets.SNYK_ORG_ID }} \
+            --report \
+            --project-name=${{ github.event.repository.name }} \
+            --severity-threshold=high \
+            --target-reference=${{ github.ref_name }} \
+            --remote-repo-url=${{ github.server_url }}/${{ github.repository }}
+          code=$?
+          # Exit 1 = issues found (still uploads with --report). Keep CI green unless you enforce a gate.
+          if [ "$code" -eq 1 ]; then
+            echo "Snyk Code finished with open issues (exit 1); results are in Snyk and logs above."
+            exit 0
+          fi
+          exit "$code"
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
@@ -68,7 +75,5 @@ jobs:
           --target-reference=${{ github.ref_name }}
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      # Intentional findings (demo deps/code) keep snyk test / snyk code steps in "failure"
-      # with continue-on-error; do not add a final exit 1 here or the workflow will stay red
-      # even though monitor and SARIF upload succeed. Re-add a gate when you want CI to fail
-      # on new Snyk issues.
+      # OSS snyk test uses continue-on-error; snyk code maps exit 1 (findings) to 0 so the step stays green.
+      # Re-add strict failure (remove mapping / use exit 1) when you want CI to block on Snyk Code issues.
