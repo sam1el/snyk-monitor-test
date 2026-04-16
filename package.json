@@ -1,0 +1,9 @@
+{
+  "name": "snyk-monitor-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal project to exercise Snyk Monitor in GitHub Actions",
+  "dependencies": {
+    "lodash": "^4.17.21"
+  }
+}
