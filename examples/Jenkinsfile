@@ -1,0 +1,132 @@
+// Declarative Jenkins pipeline — mirror of .github/workflows/snyk-monitor.yml
+//
+// Prerequisites:
+//   - Docker-enabled agent (this file uses agent { docker { ... } }).
+//   - Jenkins credentials (Secret text):
+//       snyk-token   — Snyk API token
+//       snyk-org-id  — Snyk organization ID or slug (or use a plain env var SNYK_ORG_ID on the job)
+//
+// SARIF: archived as a build artifact (allowEmptyArchive: true). Not GitHub Code Scanning.
+
+pipeline {
+  agent {
+    docker {
+      image 'node:20-bookworm'
+    }
+  }
+
+  options {
+    timestamps()
+  }
+
+  environment {
+    SNYK_HOME = "${env.WORKSPACE}/.snyk-bin"
+  }
+
+  stages {
+    stage('Install Snyk CLI') {
+      steps {
+        sh '''
+          set -euo pipefail
+          mkdir -p "${SNYK_HOME}"
+          curl -sL https://static.snyk.io/cli/latest/snyk-linux -o "${SNYK_HOME}/snyk"
+          chmod +x "${SNYK_HOME}/snyk"
+          "${SNYK_HOME}/snyk" version
+        '''
+      }
+    }
+
+    stage('Install npm dependencies') {
+      steps {
+        sh 'npm ci'
+      }
+    }
+
+    stage('Snyk Test (OSS)') {
+      environment {
+        SNYK_TOKEN = credentials('snyk-token')
+        SNYK_ORG_ID = credentials('snyk-org-id')
+      }
+      steps {
+        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+          sh '''
+            set -euo pipefail
+            "${SNYK_HOME}/snyk" test \
+              --org="${SNYK_ORG_ID}" \
+              --severity-threshold=high \
+              --sarif-file-output="${WORKSPACE}/snyk.sarif"
+          '''
+        }
+      }
+    }
+
+    stage('Archive Snyk OSS SARIF') {
+      steps {
+        archiveArtifacts artifacts: 'snyk.sarif', allowEmptyArchive: true, fingerprint: true
+      }
+    }
+
+    stage('Snyk Code (report)') {
+      environment {
+        SNYK_TOKEN = credentials('snyk-token')
+        SNYK_ORG_ID = credentials('snyk-org-id')
+      }
+      steps {
+        sh '''
+          set -u
+          set +e
+          SNYK_PROJECT_NAME="${GIT_URL##*/}"
+          SNYK_PROJECT_NAME="${SNYK_PROJECT_NAME%.git}"
+          if [ -n "${CHANGE_BRANCH:-}" ]; then
+            REF_NAME="$CHANGE_BRANCH"
+          elif [ -n "${BRANCH_NAME:-}" ]; then
+            REF_NAME="$BRANCH_NAME"
+          else
+            REF_NAME="${GIT_BRANCH#refs/heads/}"
+            REF_NAME="${REF_NAME#origin/}"
+          fi
+          "${SNYK_HOME}/snyk" code test \
+            --org="${SNYK_ORG_ID}" \
+            --report \
+            --project-name="${SNYK_PROJECT_NAME}" \
+            --severity-threshold=high \
+            --target-reference="${REF_NAME}" \
+            --remote-repo-url="${GIT_URL}"
+          code=$?
+          if [ "$code" -eq 1 ]; then
+            echo "Snyk Code finished with open issues (exit 1); results are in Snyk and logs above."
+            exit 0
+          fi
+          exit "$code"
+        '''
+      }
+    }
+
+    stage('Snyk Monitor') {
+      environment {
+        SNYK_TOKEN = credentials('snyk-token')
+        SNYK_ORG_ID = credentials('snyk-org-id')
+      }
+      steps {
+        sh '''
+          set -euo pipefail
+          SNYK_PROJECT_NAME="${GIT_URL##*/}"
+          SNYK_PROJECT_NAME="${SNYK_PROJECT_NAME%.git}"
+          if [ -n "${CHANGE_BRANCH:-}" ]; then
+            REF_NAME="$CHANGE_BRANCH"
+          elif [ -n "${BRANCH_NAME:-}" ]; then
+            REF_NAME="$BRANCH_NAME"
+          else
+            REF_NAME="${GIT_BRANCH#refs/heads/}"
+            REF_NAME="${REF_NAME#origin/}"
+          fi
+          "${SNYK_HOME}/snyk" monitor \
+            --org="${SNYK_ORG_ID}" \
+            --project-name="${SNYK_PROJECT_NAME}" \
+            --remote-repo-url="${GIT_URL}" \
+            --target-reference="${REF_NAME}"
+        '''
+      }
+    }
+  }
+}

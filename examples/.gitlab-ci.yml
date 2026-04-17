@@ -1,0 +1,70 @@
+# GitLab CI mirror of .github/workflows/snyk-monitor.yml
+#
+# Configure in GitLab: Settings → CI/CD → Variables (masked / protected as needed):
+#   SNYK_TOKEN   — Snyk API token
+#   SNYK_ORG_ID  — Snyk organization ID or slug
+#
+# SARIF is stored as a job artifact (not GitHub Code Scanning). GitLab Ultimate may
+# ingest SARIF via Security Dashboard / merge request widgets when configured.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+default:
+  image: node:20-bookworm
+
+stages:
+  - security
+
+snyk_security:
+  stage: security
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+  before_script:
+    - mkdir -p "$HOME/.local/bin"
+    - curl -sL https://static.snyk.io/cli/latest/snyk-linux -o "$HOME/.local/bin/snyk"
+    - chmod +x "$HOME/.local/bin/snyk"
+    - export PATH="$HOME/.local/bin:$PATH"
+    - snyk version
+  script:
+    - npm ci
+    - |
+      set +e
+      snyk test \
+        --org="$SNYK_ORG_ID" \
+        --severity-threshold=high \
+        --sarif-file-output="$CI_PROJECT_DIR/snyk.sarif"
+      SNYK_TEST_RC=$?
+      set -e
+      echo "Snyk OSS test exit code: ${SNYK_TEST_RC}"
+    - |
+      set -u
+      set +e
+      snyk code test \
+        --org="$SNYK_ORG_ID" \
+        --report \
+        --project-name="$CI_PROJECT_NAME" \
+        --severity-threshold=high \
+        --target-reference="$CI_COMMIT_REF_NAME" \
+        --remote-repo-url="$CI_REPOSITORY_URL"
+      code=$?
+      if [ "$code" -eq 1 ]; then
+        echo "Snyk Code finished with open issues (exit 1); results are in Snyk and logs above."
+        exit 0
+      fi
+      exit "$code"
+    - |
+      set -euo pipefail
+      snyk monitor \
+        --org="$SNYK_ORG_ID" \
+        --project-name="$CI_PROJECT_NAME" \
+        --remote-repo-url="$CI_REPOSITORY_URL" \
+        --target-reference="$CI_COMMIT_REF_NAME"
+  artifacts:
+    when: always
+    paths:
+      - snyk.sarif
+    expire_in: 1 week

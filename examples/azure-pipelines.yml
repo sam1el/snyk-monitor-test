@@ -1,0 +1,105 @@
+# Mirror of .github/workflows/snyk-monitor.yml for Azure Pipelines.
+#
+# Required pipeline variables (Project → Pipelines → Library, or edit pipeline YAML variables):
+#   SNYK_TOKEN     (secret)   — Snyk API token
+#   SNYK_ORG_ID    (secret or plain) — Snyk organization ID or slug
+#
+# Note: GitHub’s upload-sarif (Code Scanning) step is replaced by publishing the SARIF
+# as a pipeline artifact. Wire Microsoft Defender for DevOps / GHAS elsewhere if needed.
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+
+  - bash: |
+      set -euo pipefail
+      curl -sL https://static.snyk.io/cli/latest/snyk-linux -o /tmp/snyk
+      chmod +x /tmp/snyk
+      sudo mv /tmp/snyk /usr/local/bin/snyk
+      snyk version
+    displayName: Install Snyk CLI
+
+  - task: NodeTool@0
+    displayName: Use Node.js LTS
+    inputs:
+      versionSpec: 20.x
+
+  - script: npm ci
+    displayName: Install dependencies
+
+  - bash: |
+      set -euo pipefail
+      snyk test \
+        --org="$SNYK_ORG_ID" \
+        --severity-threshold=high \
+        --sarif-file-output="$(Build.SourcesDirectory)/snyk.sarif"
+    displayName: Run Snyk Test (OSS)
+    env:
+      SNYK_TOKEN: $(SNYK_TOKEN)
+      SNYK_ORG_ID: $(SNYK_ORG_ID)
+    continueOnError: true
+
+  - bash: |
+      if [ -f "$(Build.SourcesDirectory)/snyk.sarif" ]; then
+        echo "##vso[task.setvariable variable=SnykSarifExists]true"
+      else
+        echo "##vso[task.setvariable variable=SnykSarifExists]false"
+        echo "No snyk.sarif produced; skipping artifact publish."
+      fi
+    displayName: Detect Snyk OSS SARIF
+    condition: succeededOrFailed()
+
+  - task: PublishPipelineArtifact@1
+    displayName: Publish Snyk OSS SARIF
+    condition: and(succeededOrFailed(), eq(variables['SnykSarifExists'], 'true'))
+    inputs:
+      targetPath: "$(Build.SourcesDirectory)/snyk.sarif"
+      artifactName: snyk-open-source-sarif
+
+  - bash: |
+      set -u
+      set +e
+      SNYK_PROJECT_NAME="${BUILD_REPOSITORY_NAME##*/}"
+      snyk code test \
+        --org="$SNYK_ORG_ID" \
+        --report \
+        --project-name="$SNYK_PROJECT_NAME" \
+        --severity-threshold=high \
+        --target-reference="$BUILD_SOURCEBRANCHNAME" \
+        --remote-repo-url="$BUILD_REPOSITORY_URI"
+      code=$?
+      if [ "$code" -eq 1 ]; then
+        echo "Snyk Code finished with open issues (exit 1); results are in Snyk and logs above."
+        exit 0
+      fi
+      exit "$code"
+    displayName: Run Snyk Code test (report to Snyk)
+    env:
+      SNYK_TOKEN: $(SNYK_TOKEN)
+      SNYK_ORG_ID: $(SNYK_ORG_ID)
+
+  - bash: |
+      set -euo pipefail
+      SNYK_PROJECT_NAME="${BUILD_REPOSITORY_NAME##*/}"
+      snyk monitor \
+        --org="$SNYK_ORG_ID" \
+        --project-name="$SNYK_PROJECT_NAME" \
+        --remote-repo-url="$BUILD_REPOSITORY_URI" \
+        --target-reference="$BUILD_SOURCEBRANCHNAME"
+    displayName: Run Snyk Monitor
+    condition: succeededOrFailed()
+    env:
+      SNYK_TOKEN: $(SNYK_TOKEN)
+      SNYK_ORG_ID: $(SNYK_ORG_ID)

@@ -1,0 +1,83 @@
+# Copy this file to the repository root as:  .circleci/config.yml
+# (CircleCI only auto-discovers config from that path.)
+#
+# Project settings → Environment Variables:
+#   SNYK_TOKEN, SNYK_ORG_ID
+#
+# Mirror of .github/workflows/snyk-monitor.yml (SARIF is stored as a build artifact,
+# not GitHub Code Scanning.)
+
+version: 2.1
+
+jobs:
+  snyk_security:
+    docker:
+      - image: cimg/node:20.0
+    steps:
+      - checkout
+      - run:
+          name: Install Snyk CLI
+          command: |
+            mkdir -p "$HOME/.local/bin"
+            curl -sL https://static.snyk.io/cli/latest/snyk-linux -o "$HOME/.local/bin/snyk"
+            chmod +x "$HOME/.local/bin/snyk"
+            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$BASH_ENV"
+      - run:
+          name: Install npm dependencies
+          command: npm ci
+      - run:
+          name: Run Snyk Test (OSS)
+          command: |
+            snyk test \
+              --org="${SNYK_ORG_ID}" \
+              --severity-threshold=high \
+              --sarif-file-output=snyk.sarif
+          continue_on_error: true
+      - store_artifacts:
+          path: snyk.sarif
+          destination: snyk-open-source-sarif
+      - run:
+          name: Run Snyk Code test (report to Snyk)
+          command: |
+            set -u
+            set +e
+            REMOTE_URL="$(git config --get remote.origin.url)"
+            BRANCH_NAME="$(git rev-parse --abbrev-ref HEAD)"
+            REPO_BASENAME="$(basename "$REMOTE_URL")"
+            SNYK_PROJECT_NAME="${REPO_BASENAME%.git}"
+            snyk code test \
+              --org="${SNYK_ORG_ID}" \
+              --report \
+              --project-name="$SNYK_PROJECT_NAME" \
+              --severity-threshold=high \
+              --target-reference="$BRANCH_NAME" \
+              --remote-repo-url="$REMOTE_URL"
+            code=$?
+            if [ "$code" -eq 1 ]; then
+              echo "Snyk Code finished with open issues (exit 1); results are in Snyk and logs above."
+              exit 0
+            fi
+            exit "$code"
+      - run:
+          name: Run Snyk Monitor
+          command: |
+            set -euo pipefail
+            REMOTE_URL="$(git config --get remote.origin.url)"
+            BRANCH_NAME="$(git rev-parse --abbrev-ref HEAD)"
+            REPO_BASENAME="$(basename "$REMOTE_URL")"
+            SNYK_PROJECT_NAME="${REPO_BASENAME%.git}"
+            snyk monitor \
+              --org="${SNYK_ORG_ID}" \
+              --project-name="$SNYK_PROJECT_NAME" \
+              --remote-repo-url="$REMOTE_URL" \
+              --target-reference="$BRANCH_NAME"
+
+workflows:
+  snyk:
+    jobs:
+      - snyk_security:
+          filters:
+            branches:
+              only: main
+# For pull requests, enable “Only build pull requests” / branch filters in CircleCI project
+# settings, or add branch patterns here (CircleCI does not mirror GitHub’s pull_request:).

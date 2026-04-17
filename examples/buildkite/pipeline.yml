@@ -1,0 +1,57 @@
+# Buildkite: copy to repo root as  .buildkite/pipeline.yml  or register this path in Pipeline Steps.
+#
+# Configure SNYK_TOKEN and SNYK_ORG_ID (e.g. pipeline environment, cluster secrets, or vault plugin).
+#
+# Mirror of .github/workflows/snyk-monitor.yml — SARIF written to workspace; add an artifact
+# upload step or artifact_paths if you use the buildkite artifact plugin.
+
+steps:
+  - label: ":snyk: Snyk (OSS, Code, Monitor)"
+    key: snyk
+    plugins:
+      - docker#v5.11.0:
+          image: "node:20-bookworm"
+          propagate-environment: true
+    command: |
+      set -euo pipefail
+      mkdir -p "$HOME/.local/bin"
+      curl -sL https://static.snyk.io/cli/latest/snyk-linux -o "$HOME/.local/bin/snyk"
+      chmod +x "$HOME/.local/bin/snyk"
+      export PATH="$HOME/.local/bin:$PATH"
+      snyk version
+      npm ci
+      REMOTE_URL="$(git config --get remote.origin.url)"
+      BRANCH_NAME="$(git rev-parse --abbrev-ref HEAD)"
+      REPO_BASENAME="$(basename "$REMOTE_URL")"
+      SNYK_PROJECT_NAME="${REPO_BASENAME%.git}"
+      set +e
+      snyk test \
+        --org="$SNYK_ORG_ID" \
+        --severity-threshold=high \
+        --sarif-file-output="$(pwd)/snyk.sarif"
+      SNYK_TEST_RC=$?
+      set -e
+      echo "Snyk OSS test exit code: ${SNYK_TEST_RC}"
+      set -u
+      set +e
+      snyk code test \
+        --org="$SNYK_ORG_ID" \
+        --report \
+        --project-name="$SNYK_PROJECT_NAME" \
+        --severity-threshold=high \
+        --target-reference="$BRANCH_NAME" \
+        --remote-repo-url="$REMOTE_URL"
+      code=$?
+      if [ "$code" -eq 1 ]; then
+        echo "Snyk Code finished with open issues (exit 1); results are in Snyk and logs above."
+        exit 0
+      fi
+      if [ "$code" -ne 0 ]; then
+        exit "$code"
+      fi
+      set -euo pipefail
+      snyk monitor \
+        --org="$SNYK_ORG_ID" \
+        --project-name="$SNYK_PROJECT_NAME" \
+        --remote-repo-url="$REMOTE_URL" \
+        --target-reference="$BRANCH_NAME"

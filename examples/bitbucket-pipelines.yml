@@ -1,0 +1,67 @@
+# Copy to repository root as:  bitbucket-pipelines.yml
+#
+# Repository settings → Pipelines → Repository variables:
+#   SNYK_TOKEN (secured), SNYK_ORG_ID
+#
+# Mirror of .github/workflows/snyk-monitor.yml
+
+image: node:20-bookworm
+
+definitions:
+  steps:
+    - step: &snyk
+        name: Snyk security scan
+        script:
+          - |
+            set -euo pipefail
+            mkdir -p "$HOME/.local/bin"
+            curl -sL https://static.snyk.io/cli/latest/snyk-linux -o "$HOME/.local/bin/snyk"
+            chmod +x "$HOME/.local/bin/snyk"
+            export PATH="$HOME/.local/bin:$PATH"
+            snyk version
+            npm ci
+            set +e
+            snyk test \
+              --org="$SNYK_ORG_ID" \
+              --severity-threshold=high \
+              --sarif-file-output=snyk.sarif
+            SNYK_TEST_RC=$?
+            set -e
+            echo "Snyk OSS test exit code: ${SNYK_TEST_RC}"
+            set -u
+            set +e
+            REMOTE_URL="$(git config --get remote.origin.url)"
+            BRANCH_NAME="$(git rev-parse --abbrev-ref HEAD)"
+            REPO_BASENAME="$(basename "$REMOTE_URL")"
+            SNYK_PROJECT_NAME="${REPO_BASENAME%.git}"
+            snyk code test \
+              --org="$SNYK_ORG_ID" \
+              --report \
+              --project-name="$SNYK_PROJECT_NAME" \
+              --severity-threshold=high \
+              --target-reference="$BRANCH_NAME" \
+              --remote-repo-url="$REMOTE_URL"
+            code=$?
+            if [ "$code" -eq 1 ]; then
+              echo "Snyk Code finished with open issues (exit 1); results are in Snyk and logs above."
+              exit 0
+            fi
+            if [ "$code" -ne 0 ]; then
+              exit "$code"
+            fi
+            set -euo pipefail
+            snyk monitor \
+              --org="$SNYK_ORG_ID" \
+              --project-name="$SNYK_PROJECT_NAME" \
+              --remote-repo-url="$REMOTE_URL" \
+              --target-reference="$BRANCH_NAME"
+        artifacts:
+          - snyk.sarif
+
+pipelines:
+  branches:
+    main:
+      - step: *snyk
+  pull-requests:
+    "**":
+      - step: *snyk
