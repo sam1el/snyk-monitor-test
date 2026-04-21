@@ -40,6 +40,84 @@ Configure tokens in your CI provider’s **secrets / variables** UI (GitHub **Ac
 
 ---
 
+## Snyk documentation by workflow
+
+Official **Snyk User Docs** ([`docs.snyk.io`](https://docs.snyk.io)) pages that match what these pipelines do: **CLI install**, **`snyk test`** (Open Source), **SARIF**, **`snyk code test --report`**, and **`snyk monitor`**, plus platform-specific guides where they exist.
+
+### Shared (all pipelines)
+
+| Topic | Documentation |
+|--------|----------------|
+| **CI/CD integrations overview** | [Snyk CI/CD integrations](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations) |
+| **`snyk test` and `snyk monitor` in CI** | [Snyk test and snyk monitor in CI/CD integration](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/snyk-ci-cd-integration-deployment-and-strategies/snyk-test-and-snyk-monitor-in-ci-cd-integration) |
+| **Snyk Code in CI/CD** | [Snyk Code in the CI/CD pipeline](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/use-snyk-code-in-the-ci-cd-pipeline) |
+| **Install / update the Snyk CLI** | [Install or update the Snyk CLI](https://docs.snyk.io/developer-tools/snyk-cli/install-or-update-the-snyk-cli) |
+| **Authenticate the CLI (e.g. `SNYK_TOKEN`)** | [Authenticate to use the CLI](https://docs.snyk.io/developer-tools/snyk-cli/authenticate-to-use-the-cli) · [Configure Snyk CLI to connect to Snyk API](https://docs.snyk.io/developer-tools/snyk-cli/configure-the-snyk-cli/configure-snyk-cli-to-connect-to-snyk-api) |
+| **Choose an org (`--org`)** | [How to select the Organization to use in the CLI](https://docs.snyk.io/developer-tools/snyk-cli/scan-and-maintain-projects-using-the-cli/how-to-select-the-organization-to-use-in-the-cli) |
+| **CLI command reference** | [`snyk test`](https://docs.snyk.io/developer-tools/snyk-cli/commands/test) · [`snyk monitor`](https://docs.snyk.io/developer-tools/snyk-cli/commands/monitor) · [`snyk code test`](https://docs.snyk.io/developer-tools/snyk-cli/commands/code-test) · [CLI commands and options summary](https://docs.snyk.io/developer-tools/snyk-cli/cli-commands-and-options-summary) |
+| **Customize `snyk test`** | [Use options to customize the snyk test command](https://docs.snyk.io/developer-tools/snyk-cli/scan-and-maintain-projects-using-the-cli/snyk-cli-for-open-source/use-options-to-customize-the-snyk-test-command) |
+
+### GitHub Actions (`.github/workflows/snyk-monitor.yml`)
+
+| Topic | Documentation |
+|--------|----------------|
+| **GitHub Actions + Snyk** | [GitHub Actions for Snyk setup and checking for vulnerabilities](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/github-actions-for-snyk-setup-and-checking-for-vulnerabilities) |
+| **`snyk/actions/setup`** | [Snyk Setup action](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/github-actions-for-snyk-setup-and-checking-for-vulnerabilities/snyk-setup-action) |
+
+This repo calls the **Snyk CLI** from a workflow after the setup action; the same GitHub Actions guide covers patterns and **`SNYK_TOKEN`**.
+
+### GitLab CI (`examples/.gitlab-ci.yml`)
+
+| Topic | Documentation |
+|--------|----------------|
+| **GitLab + Snyk (SCM)** | [Snyk GitLab integration](https://docs.snyk.io/integrate-with-snyk/git-repositories-scms-integrations-with-snyk/snyk-gitlab-integration) |
+| **CLI in CI** | [Snyk CI/CD integrations](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations) and the [shared CLI topics](#shared-all-pipelines) above (GitLab pipelines here use the CLI directly, not a dedicated GitLab-only task). |
+
+### Azure Pipelines (`examples/azure-pipelines.yml`)
+
+| Topic | Documentation |
+|--------|----------------|
+| **Azure Pipelines + Snyk** | [Azure Pipelines integration](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/azure-pipelines-integration) |
+| **Extension / marketplace** | [Install the Snyk extension for your Azure pipelines](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/azure-pipelines-integration/install-the-snyk-extension-for-your-azure-pipelines) |
+| **Snyk Security Scan task** | [Add the Snyk Security Task to your pipelines](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/azure-pipelines-integration/add-the-snyk-security-task-to-your-pipelines) · [Snyk Security Scan task parameters and values](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/azure-pipelines-integration/snyk-security-scan-task-parameters-and-values) |
+
+The example YAML uses **shell + Snyk CLI** like the GitHub workflow; the **Snyk Security Scan** task is an alternative you can swap in.
+
+### Jenkins (`examples/Jenkinsfile`)
+
+| Topic | Documentation |
+|--------|----------------|
+| **Jenkins + Snyk** | [Jenkins plugin integration with Snyk](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/jenkins-plugin-integration-with-snyk) |
+
+The sample **Jenkinsfile** uses the **CLI in `sh` steps** (including **Snyk Code**). The docs note that **Snyk Code** (and Container / IaC) may require the **CLI** rather than the plugin alone—see the [Jenkins plugin page](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/jenkins-plugin-integration-with-snyk).
+
+### Harness (`examples/harness/snyk-security-scan.yaml`)
+
+Snyk does not publish a Harness-specific integration guide. Use the [shared CLI topics](#shared-all-pipelines) and [Harness’s own pipeline YAML docs](https://developer.harness.io/docs/platform/pipelines/harness-yaml-quickstart) to wire **Run** steps and secrets.
+
+### CircleCI (`examples/circleci/config.yml`)
+
+| Topic | Documentation |
+|--------|----------------|
+| **CircleCI + Snyk** | [CircleCI integration using a Snyk Orb](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/circleci-integration-using-a-snyk-orb) |
+
+The example uses **raw shell + CLI**; Snyk also documents a **[Snyk Orb](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/circleci-integration-using-a-snyk-orb)** if you prefer that pattern.
+
+### Bitbucket Pipelines (`examples/bitbucket-pipelines.yml`)
+
+| Topic | Documentation |
+|--------|----------------|
+| **Bitbucket Pipes + Snyk** | [Bitbucket Pipelines integration using a Snyk pipe](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/bitbucket-pipelines-integration-using-a-snyk-pipe) |
+| **How to add a pipe** | [How to add a Snyk pipe](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/bitbucket-pipelines-integration-using-a-snyk-pipe/how-to-add-a-snyk-pipe) · [Snyk pipe examples](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations/bitbucket-pipelines-integration-using-a-snyk-pipe/snyk-pipe-examples) |
+
+The example uses a **multiline script + CLI**; the **Snyk Pipe** is the documented Bitbucket-native option.
+
+### Buildkite (`examples/buildkite/pipeline.yml`)
+
+There is no dedicated **Buildkite** page in Snyk’s docs; use the [shared CLI topics](#shared-all-pipelines) and [Snyk CI/CD integrations](https://docs.snyk.io/developer-tools/snyk-ci-cd-integrations) for guidance.
+
+---
+
 ## What each pipeline does (shared steps)
 
 Every variant follows the **same security scan story**:
@@ -123,9 +201,8 @@ There is **no final “fail the whole job” step** on GitHub Actions in the cur
 
 ## Further reading
 
-- [Snyk Monitor](https://docs.snyk.io/developer-tools/snyk-cli/commands/monitor)  
-- [Snyk Code test (`--report`)](https://docs.snyk.io/developer-tools/snyk-cli/commands/code-test)  
-- [GitHub push protection](https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line) (avoid real-looking secrets in commits)
+- **Snyk:** see [Snyk documentation by workflow](#snyk-documentation-by-workflow) above for CLI and CI/CD links.  
+- **GitHub (not Snyk):** [Push protection](https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line) — avoid committing strings that look like live provider API keys.
 
 ---
 
